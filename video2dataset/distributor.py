@@ -170,6 +170,9 @@ class SlurmDistributor:
         self.nodelist = nodelist
         self.constraint = constraint
         self.exclude = exclude
+        # cache path might contain variable like /path/${USER}/..
+        cache_path = os.path.expandvars(cache_path)
+        
         self.cache_path = cache_path
         if not cache_path:
             cache_path = ".video2dataset_cache/"
@@ -233,7 +236,8 @@ srun --account {self.account} bash {self.launcher_path}
         else:
             conda_env = os.environ.get("CONDA_ENV")
             if conda_env:
-                venv_activate = f"conda activate {conda_env}"
+                venv_activate = 'source "$(dirname "$(dirname "$(which conda)")")/etc/profile.d/conda.sh"'
+                venv_activate += f"conda activate {conda_env}"
             else:
                 raise ValueError("You need to specify either a virtual environment or a conda environment.")
         
@@ -255,6 +259,9 @@ export CALLED_FROM_SLURM=1
 
 cd {project_root}
 {venv_activate}
+
+module use /app/software/modules/
+module load ffmpeg
 
 python {script} --worker_args {self.worker_args_as_file} --node_id $SLURM_NODEID --n_nodes $SLURM_JOB_NUM_NODES --num_tasks_per_node $SLURM_NTASKS_PER_NODE --subtask_id $SLURM_LOCALID
 """

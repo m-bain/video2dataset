@@ -37,8 +37,9 @@ class FrameSubsampler(Subsampler):
         self.output_modality = "video" if downsample_method == "fps" else "jpg"
 
     def __call__(self, streams, metadata=None):
-        # TODO: you might not want to pop it (f.e. in case of other subsamplers)
-        video_bytes = streams.pop("video")
+        if "video" not in streams:
+            return streams, metadata, None
+        video_bytes = streams["video"]
         subsampled_bytes, subsampled_metas = [], []
         for i, vid_bytes in enumerate(video_bytes):
             with tempfile.TemporaryDirectory() as tmpdir:

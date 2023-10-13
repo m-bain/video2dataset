@@ -21,6 +21,7 @@ class InputSharder:
     - caption_col: the column name of the caption
     - clip_col: the column name of the list of time ranges for video clips
     - save_additional_columns: the list of additional columns to save
+    - save_all_columns: whether to save all columns
     - number_sample_per_shard: the number of samples per shard
     - done_shards: a set of already done shards
     """
@@ -33,6 +34,7 @@ class InputSharder:
         caption_col,
         clip_col,
         save_additional_columns,
+        save_all_columns,
         number_sample_per_shard,
         done_shards,
         tmp_path,
@@ -43,6 +45,7 @@ class InputSharder:
         self.caption_col = caption_col
         self.clip_col = clip_col
         self.save_additional_columns = save_additional_columns
+        self.save_all_columns = save_all_columns
         self.number_sample_per_shard = number_sample_per_shard
         self.done_shards = done_shards
         self.shard_sampler = sampler
@@ -94,6 +97,9 @@ class InputSharder:
                     columns_to_read += [self.clip_col]
                 if self.save_additional_columns is not None:
                     columns_to_read += self.save_additional_columns
+                if self.save_all_columns:
+                    columns_to_read = None
+    
                 df = pq.read_table(file, columns=columns_to_read)
         else:
             raise ValueError(f"Unknown input format {self.input_format}")

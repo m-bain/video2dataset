@@ -24,8 +24,7 @@ class AudioRateSubsampler:
         # If no "audio" key in streams, just return streams.
         if "audio" not in streams:
             return streams, metadata, None  
-
-        audio_bytes = streams.pop("audio")
+        audio_bytes = streams["audio"]
         subsampled_bytes, subsampled_metas = [], []
         for aud_bytes in audio_bytes:
             with tempfile.TemporaryDirectory() as tmpdir:

@@ -155,10 +155,12 @@ class DownloadWorker:
 
         # The subsamplers might change the output format, so we need to update the writer
         writer_encode_formats = self.encode_formats.copy()
-        if self.subsamplers["audio"]:
-            writer_encode_formats["audio"] = self.subsamplers["audio"][0].encode_formats["audio"]
-        if self.subsamplers["video"]:
-            writer_encode_formats["video"] = self.subsamplers["video"][0].encode_formats["video"]
+
+        for mod, subsampler in self.subsamplers.items():
+            if subsampler:
+                if hasattr(subsampler[0], "encode_formats"):
+                    if mod in subsampler[0].encode_formats:
+                        writer_encode_formats[mod] = subsampler[0].encode_formats[mod]
 
         # give schema to writer
         sample_writer = self.sample_writer_class(

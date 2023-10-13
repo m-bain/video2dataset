@@ -8,7 +8,8 @@ import time
 import tempfile
 
 try:
-    import whisperx
+    # import whisperx
+    import faster_whisper
     import torch
 except:  # pylint: disable=broad-except,bare-except
     pass
@@ -30,6 +31,8 @@ class WhisperSubsampler(Subsampler):
         self,
         model_name="large-v2",
         batch_size=16,
+        beam_size=5,
+        vad_filter=True,
         compute_type="float16",
         download_root=None,
         is_slurm_task=False,
@@ -42,7 +45,7 @@ class WhisperSubsampler(Subsampler):
             device, device_index = "cuda", int(os.environ["LOCAL_RANK"])
             while True:
                 try:
-                    self.model = whisperx.load_model(
+                    self.model = faster_whisper.WhisperModel(
                         model_name,
                         device=device,
                         device_index=device_index,
@@ -61,27 +64,58 @@ class WhisperSubsampler(Subsampler):
                     continue
         else:
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.model = whisperx.load_model(
+            self.model = faster_whisper.WhisperModel(
                 model_name,
                 device=device,
+                device_index=0,
                 compute_type=compute_type,
                 download_root=download_root,
             )
 
+        self.model_name = model_name
+        self.compute_type = compute_type
         self.batch_size = batch_size
+        self.beam_size = beam_size
+        self.vad_filter = vad_filter
 
     def __call__(self, streams, metadata=None):
         audio_bytes = streams.get("audio")
-
         for i, aud_bytes in enumerate(audio_bytes):
             # TODO: .m4a not always
             try:
-                with tempfile.NamedTemporaryFile(suffix=".mp3") as tmpfile:
+                with tempfile.NamedTemporaryFile(suffix=".flac") as tmpfile:
                     tmpfile.write(aud_bytes)
                     tmpfile.flush()  # ensure all data is written
-                    audio = whisperx.load_audio(tmpfile.name)
-                    result = self.model.transcribe(audio, batch_size=self.batch_size)
-                    metadata[i]["whisper_transcript"] = result
+                    segments, info = self.model.transcribe(
+                        tmpfile,
+                        beam_size=self.beam_size,
+                    )
+                    result = []
+                    for segment in segments:
+                        result.append(
+                            {
+                                "start": segment.start,
+                                "end": segment.end,
+                                "text": segment.text,
+                            }
+                        )
+                    
+                    if len(result) > 0:
+                        if "transcript" not in metadata[i]:
+                            metadata[i]["transcript"] = []
+                        metadata[i]["transcript"].append({
+                            "segments": result,
+                            "language": info.language,
+                            "language_probability": info.language_probability,
+                            "config": {
+                                "model": self.model_name,
+                                "batch_size": self.batch_size,
+                                "beam_size": self.beam_size,
+                                "vad_filter": self.vad_filter,
+                                "engine": "faster_whisper",
+                                "compute_type": self.compute_type,
+                            },
+                        })
             except Exception as err:  # pylint: disable=broad-except
                 return [], metadata, str(err)
 
