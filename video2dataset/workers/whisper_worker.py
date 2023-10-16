@@ -8,7 +8,10 @@ import json
 import fsspec
 import pyarrow as pa
 import webdataset as wds
-
+import tarfile
+import tempfile
+import os
+import shutil
 from multiprocessing.pool import ThreadPool
 from threading import Semaphore
 
@@ -283,3 +286,44 @@ class WhisperWorker:
             status_dict,
             self.config["storage"]["oom_shard_count"],
         )
+
+        original_shard_fp = shard
+        processed_shard_fp = sample_writer.tar_fp
+
+        print(f"original shard: {original_shard_fp}")
+        print(f"transcribed shard: {processed_shard_fp}")
+
+        # Use a temporary directory on local storage.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            new_tar_fp = os.path.join(temp_dir, "merged.tar")
+            
+            with tarfile.open(new_tar_fp, "w") as new_tar:
+                with tarfile.open(processed_shard_fp, "r") as processed_tar:
+                    processed_tar_names = processed_tar.getnames()
+                    with tarfile.open(original_shard_fp, "r") as original_tar:
+                        for tarinfo in original_tar:
+                            if not tarinfo.name.endswith('.json'):
+                                fileobj = original_tar.extractfile(tarinfo)
+                                new_tar.addfile(tarinfo, fileobj)
+                            else:
+                                if tarinfo.name in processed_tar_names:
+                                    fileobj = processed_tar.extractfile(tarinfo.name)
+                                    if fileobj:
+                                        new_tar.addfile(tarinfo, fileobj)
+
+        if os.path.getsize(new_tar_fp) < os.path.getsize(original_shard_fp):
+            raise ValueError("The new tar with added transcription file seems to be smaller than the original. Something might be wrong!")
+
+        with tarfile.open(original_shard_fp, "r") as original_tar:
+            original_file_count = len(original_tar.getnames())
+
+        with tarfile.open(new_tar_fp, "r") as new_tar:
+            new_file_count = len(new_tar.getnames())
+
+        if new_file_count < original_file_count:
+            raise ValueError("The new tar file seems to have fewer files than the original. Something might be wrong!")
+
+        
+        os.remove(original_shard_fp)
+        shutil.move(new_tar_fp, original_shard_fp)
+        os.remove(processed_shard_fp)
